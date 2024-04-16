@@ -81,7 +81,7 @@ services:
     volumes:
       - influxdb-storage:/var/lib/influxdb2:rw
     env_file:
-      - .env
+      - ./hadoop.env
     entrypoint: ["./entrypoint.sh"]
     restart: on-failure:10
     ports:
@@ -92,7 +92,7 @@ services:
     volumes:
       - ${TELEGRAF_CFG_PATH}:/etc/telegraf/telegraf.conf:rw
     env_file:
-      - .env
+      - ./hadoop.env
     depends_on:
       - influxdb
 
