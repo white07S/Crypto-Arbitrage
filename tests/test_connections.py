@@ -1,0 +1,1 @@
+# test kafka connections and hadoop connections
