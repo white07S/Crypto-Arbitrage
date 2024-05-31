@@ -1,1 +1,0 @@
-# test kafka topic for producing and consuming 

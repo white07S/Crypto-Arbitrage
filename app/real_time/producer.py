@@ -1,63 +1,81 @@
-# producer_code.py
+import signal
+from confluent_kafka import Producer
 import ccxt
-import time
 import json
 import threading
-from confluent_kafka import Producer
+import os
+import time
+# Global flag to control the running of threads
+running = True
 
-# Load configuration from JSON file
-with open('appsettings.json', 'r') as file:
-    config_data = json.load(file)
+def signal_handler(signum, frame):
+    """Signal handler to stop the producer loop."""
+    global running
+    running = False
+    print("Shutdown signal received. Exiting threads...")
 
-# Configuration for Kafka Producer
-kafka_config = {
-    'bootstrap.servers': "localhost:9092"  # Assuming Kafka is running on localhost
-}
+def load_config():
+    """Load the configuration file."""
+    current_dir = os.path.dirname(os.path.abspath(__file__))
+    config_file_path = os.path.join(current_dir, 'appsettings.json')
+    with open(config_file_path, 'r') as file:
+        return json.load(file)
 
-# Create a Kafka Producer instance
-producer = Producer(**kafka_config)
+def create_producer(config):
+    """Create and return a Kafka producer."""
+    kafka_config = {'bootstrap.servers': config['bootstrap_servers']}
+    return Producer(**kafka_config)
+
+def fetch_ticker_data(exchange, coin):
+    """Fetch ticker data from the exchange."""
+    return exchange.fetch_ticker(coin)
+
+def produce_message(producer, topic, message):
+    """Produce a message to the Kafka topic."""
+    producer.produce(topic, message.encode('utf-8'), callback=delivery_report)
+    producer.flush()
 
 def delivery_report(err, msg):
-    """Callback to report message delivery status"""
+    """Callback to report message delivery status."""
     if err is not None:
         print(f"Message delivery failed: {err}")
     else:
         print(f"Message delivered to {msg.topic()} [{msg.partition()}]")
 
-def fetch_and_produce(coin, provider):
+def run_producer_loop(coin, provider, config):
+    """Run the main loop to fetch and produce data."""
+    global running
     exchange = getattr(ccxt, provider)({
         'rateLimit': 1200,
         'enableRateLimit': True
     })
-    
     topic = f'{provider}_{coin.replace("/", "")}'
-    
-    while True:
+    producer = create_producer(config)
+
+    while running:
         try:
-            # Fetch the ticker data for the coin
-            ticker = exchange.fetch_ticker(coin)
-            # Serialize the ticker data to JSON format
+            ticker = fetch_ticker_data(exchange, coin)
             message = json.dumps(ticker)
-            # Produce the message to the Kafka topic
-            producer.produce(topic, message.encode('utf-8'), callback=delivery_report)
-            # Wait for any outstanding messages to be delivered
-            producer.flush()
+            produce_message(producer, topic, message)
+            time.sleep(config['time_sleep'])  # Sleep for some time defined by your rate limit or processing needs
         except ccxt.BaseError as error:
             print(f"An error occurred: {error}")
-            break  # Exit the while loop to prevent infinite loops on errors
-        # Sleep to respect rate limits and manage message flow
-        time.sleep(config_data['time_sleep'])
+        except KeyboardInterrupt:
+            print("Producer loop interrupted")
+            break
 
-def start_threads():
+def start_threads(config):
     threads = []
-    for provider in config_data['providers']:
-        for coin in config_data['coins']:
-            t = threading.Thread(target=fetch_and_produce, args=(coin, provider))
+    for provider in config['providers']:
+        for coin in config['coins']:
+            t = threading.Thread(target=run_producer_loop, args=(coin, provider, config))
             t.start()
             threads.append(t)
-
     for thread in threads:
-        thread.join()  # Wait for all threads to complete
+        thread.join()
 
 if __name__ == "__main__":
-    start_threads()
+    signal.signal(signal.SIGINT, signal_handler)
+    signal.signal(signal.SIGTERM, signal_handler)
+    config = load_config()
+    start_threads(config)

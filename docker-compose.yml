@@ -75,29 +75,9 @@ services:
       - /var/run/docker.sock:/var/run/docker.sock
     depends_on:
       - zookeeper
-      
-  influxdb:
-    image: influxdb:2.1.1
-    volumes:
-      - influxdb-storage:/var/lib/influxdb2:rw
-    env_file:
-      - ./hadoop.env
-    entrypoint: ["./entrypoint.sh"]
-    restart: on-failure:10
-    ports:
-      - ${DOCKER_INFLUXDB_INIT_PORT}:8086
-
-  telegraf:
-    image: telegraf:1.19
-    volumes:
-      - ${TELEGRAF_CFG_PATH}:/etc/telegraf/telegraf.conf:rw
-    env_file:
-      - ./hadoop.env
-    depends_on:
-      - influxdb
 
 volumes:
   hadoop_namenode:
   hadoop_datanode:
   hadoop_historyserver:
-  influxdb-storage:
+
